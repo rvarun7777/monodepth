@@ -1,10 +1,10 @@
-# Copyright UCL Business plc 2017. Patent Pending. All rights reserved. 
+# Copyright UCL Business plc 2017. Patent Pending. All rights reserved.
 #
 # The MonoDepth Software is licensed under the terms of the UCLB ACP-A licence
 # which allows for non-commercial use only, the full terms of which are made
 # available in the LICENSE file.
 #
-# For any other use of the software not covered by the UCLB ACP-A Licence, 
+# For any other use of the software not covered by the UCLB ACP-A Licence,
 # please contact info@uclb.com
 
 """Fully convolutional model for monocular depth estimation
@@ -20,7 +20,7 @@ import tensorflow.contrib.slim as slim
 
 from bilinear_sampler import *
 
-monodepth_parameters = namedtuple('parameters', 
+monodepth_parameters = namedtuple('parameters',
                         'encoder, '
                         'height, width, '
                         'batch_size, '
@@ -33,6 +33,10 @@ monodepth_parameters = namedtuple('parameters',
                         'disp_gradient_loss_weight, '
                         'lr_loss_weight, '
                         'full_summary')
+
+# Disparity (inverse depth) values range from 0.01 to 10.
+DISP_SCALING = 100
+MIN_DISP = 0.1
 
 class MonodepthModel(object):
     """monodepth model"""
@@ -53,7 +57,7 @@ class MonodepthModel(object):
             return
 
         self.build_losses()
-        self.build_summaries()     
+        self.build_summaries()
 
     def gradient_x(self, img):
         gx = img[:,:,:-1,:] - img[:,:,1:,:]
@@ -120,7 +124,7 @@ class MonodepthModel(object):
         return smoothness_x + smoothness_y
 
     def get_disp(self, x):
-        disp = 0.3 * self.conv(x, 2, 3, 1, tf.nn.sigmoid)
+        disp = self.conv(x, 2, 3, 1, tf.nn.sigmoid) * DISP_SCALING + MIN_DISP
         return disp
 
     def conv(self, x, num_out_layers, kernel_size, stride, activation_fn=tf.nn.elu):
@@ -191,7 +195,7 @@ class MonodepthModel(object):
             skip4 = conv4
             skip5 = conv5
             skip6 = conv6
-        
+
         with tf.variable_scope('decoder'):
             upconv7 = upconv(conv7,  512, 3, 2) #H/64
             concat7 = tf.concat([upconv7, skip6], 3)
@@ -250,7 +254,7 @@ class MonodepthModel(object):
             skip3 = conv2
             skip4 = conv3
             skip5 = conv4
-        
+
         # DECODING
         with tf.variable_scope('decoder'):
             upconv6 = upconv(conv5,   512, 3, 2) #H/32
@@ -309,8 +313,9 @@ class MonodepthModel(object):
         # STORE DISPARITIES
         with tf.variable_scope('disparities'):
             self.disp_est  = [self.disp1, self.disp2, self.disp3, self.disp4]
-            self.disp_left_est  = [tf.expand_dims(d[:,:,:,0], 3) for d in self.disp_est]
-            self.disp_right_est = [tf.expand_dims(d[:,:,:,1], 3) for d in self.disp_est]
+            self.depths = [1 / d for d in self.disp_est]
+            self.disp_left_est  = [tf.expand_dims(d[:,:,:,0], 3) for d in self.depths]
+            self.disp_right_est = [tf.expand_dims(d[:,:,:,1], 3) for d in self.depths]
 
         if self.mode == 'test':
             return
